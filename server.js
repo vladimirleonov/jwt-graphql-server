@@ -1,7 +1,6 @@
 const express = require("express");
 const { graphqlHTTP } = require("express-graphql");
 const bodyParser = require("body-parser");
-const cors = require("cors");
 const {
   GraphQLSchema,
   GraphQLObjectType,
@@ -10,18 +9,11 @@ const {
 } = require("graphql");
 const jwt = require("jsonwebtoken");
 const fs = require("fs/promises");
+const cors = require("cors");
 
 const app = express();
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
-
-app.use(
-  cors({
-    origin: "*",
-    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-    allowedHeaders: "Content-Type, Authorization",
-  })
-);
 
 const PORT = 8001;
 const SECRET_KEY = "qazxswedc";
@@ -66,7 +58,17 @@ const TokenType = new GraphQLObjectType({
 const RootQueryType = new GraphQLObjectType({
   name: "Query",
   fields: {
-    dummy: { type: GraphQLString },
+    auth: {
+      type: TokenType,
+      resolve: async (_, args, context) => {
+        if (!context.req || !context.req.user || !context.req.user.token) {
+          throw new Error("Unauthorized");
+        }
+
+        const user = context.req.user;
+        return { access_token: user.token };
+      },
+    },
   },
 });
 
@@ -103,7 +105,7 @@ const RootMutationType = new GraphQLObjectType({
           throw new Error("Error registering user");
         }
 
-        const access_token = createToken({ email, password });
+        const access_token = createToken({ email });
 
         return { access_token };
       },
@@ -118,10 +120,12 @@ const RootMutationType = new GraphQLObjectType({
         const { email, password } = args;
 
         if (!(await isAuthenticated({ email, password }))) {
-          throw new Error("Incorrect email or password");
+          throw new Error("Incorrect email or password", {
+            code: "INCORRECT_CREDENTIALS",
+          });
         }
 
-        const access_token = createToken({ email, password });
+        const access_token = createToken({ email });
 
         return { access_token };
       },
@@ -129,46 +133,54 @@ const RootMutationType = new GraphQLObjectType({
   },
 });
 
-const authMiddleware = (req, res, next) => {
-  if (
-    req.headers.authorization === undefined ||
-    req.headers.authorization.split(" ")[0] !== "Bearer"
-  ) {
-    const status = 401;
-    const message = "Error in authorization format";
-    res.status(status).json({ status, message });
-    return;
-  }
-
-  try {
-    const token = req.headers.authorization.split(" ")[1];
-    const verifyTokenResult = verifyToken(token);
-
-    if (verifyTokenResult instanceof Error) {
-      const status = 401;
-      const message = "Access token not provided";
-      res.status(status).json({ status, message });
-      return;
-    }
-
-    next();
-  } catch (err) {
-    const status = 401;
-    const message = "Error access_token is revoked";
-    res.status(status).json({ status, message });
-  }
-};
-
 const schema = new GraphQLSchema({
   query: RootQueryType,
   mutation: RootMutationType,
 });
 
+app.use(cors());
+
+//auth middleware
+app.use(async (req, res, next) => {
+  if (req.method === "OPTIONS") {
+    next();
+  }
+
+  const authorizationHeader = req.headers.authorization;
+
+  if (!authorizationHeader) {
+    req.user = null;
+    return next();
+  }
+
+  const token = authorizationHeader.replace("Bearer ", "");
+
+  if (!token) {
+    req.user = null;
+    next();
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    if (decoded instanceof Error) {
+      req.user = null;
+      next();
+    } else {
+      req.user = { ...decoded, token };
+      next();
+    }
+  } catch (err) {
+    req.user = null;
+    next();
+  }
+});
+
 app.use(
   "/graphql",
-  graphqlHTTP({
+  graphqlHTTP((req) => ({
     schema,
-  })
+    context: { req },
+  }))
 );
 
 app.listen(PORT, () => {
