@@ -110,23 +110,23 @@ mutation {
 
 ```
 {
-	"errors": [
-		{
-			"message": "Unauthorized",
-			"locations": [
-				{
-					"line": 2,
-					"column": 5
-				}
-			],
-			"path": [
-				"auth"
-			]
-		}
-	],
-	"data": {
-		"auth": null
-	}
+  "errors": [
+    {
+      "message": "Unauthorized",
+      "locations": [
+        {
+          "line": 2,
+          "column": 5
+        }
+      ],
+      "path": [
+        "auth"
+      ]
+    }
+  ],
+  "data": {
+    "auth": null
+  }
 }
 ```
 
