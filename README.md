@@ -16,12 +16,6 @@ npm install
 npm start
 ```
 
-Возможно, потребуется запустить:
-
-```
-npm audit fix
-```
-
 Сервер будет доступен по адресу 'http://localhost:8001/graphql'
 
 ## Использование
